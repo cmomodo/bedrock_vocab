@@ -1,5 +1,6 @@
 # bedrock_vocab
 This will be using bedrock to generate vocab and stores it in dynamodb
+
 ##SYSTEM DESIGN
 <img src="src/Lambda_word_generation.png" alt="architecture" width="600"/>
 
