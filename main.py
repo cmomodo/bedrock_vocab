@@ -1,37 +1,85 @@
 import json
 import boto3
+import uuid
+from datetime import datetime
 
 client = boto3.client('bedrock-runtime')
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('Vocabulary')
 
 def lambda_handler(event, context):
-    prompt = "\n\nHuman: whats the population of lisbon\n\nAssistant:"
+    """Sample pure Lambda function
 
-    # Create a request syntax - get details from console and body should be a JSON object
-    response = client.invoke_model(
-        body=json.dumps({
-            "prompt": prompt,
-            "max_tokens_to_sample": 300,  # Corrected key
-            "temperature": 1.0,
-            "top_p": 0.9,
-            "top_k": 50,
-            "stop_sequences": []
-        }),
-        contentType='application/json',
-        accept='application/json',
-        modelId='anthropic.claude-v2'
-    )
+    Parameters
+    ----------
+    event: dict, required
+        API Gateway Lambda Proxy Input Format
 
-    print(response['body'])
-#convert Streaming body to byte and then byte to string
-    data = response['body'].read().decode('utf-8')
-    response_string = json.loads(data)
+        Event doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#api-gateway-simple-proxy-for-lambda-input-format
 
-#save the response to a file in s3 bucket
-    s3 = boto3.resource('s3')
-    s3.Bucket('cee-cee27').put_object(Key='response.txt', Body=json.dumps(response_string))
+    context: object, required
+        Lambda Context runtime methods and attributes
 
-    # TODO implement
-    return {
-        'statusCode': 200,
-        'body': json.dumps(response_string)
-    }
+        Context doc: https://docs.aws.amazon.com/lambda/latest/dg/python-context-object.html
+
+    Returns
+    ------
+    API Gateway Lambda Proxy Output Format: dict
+
+        Return doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
+    """
+
+    try:
+        prompt = "\n\nHuman: Best team in england in your own opinion\n\nAssistant:"
+
+        # Create request for Bedrock
+        response = client.invoke_model(
+            body=json.dumps({
+                "prompt": prompt,
+                "max_tokens_to_sample": 300,
+                "temperature": 1.0,
+                "top_p": 0.9,
+                "top_k": 50,
+                "stop_sequences": []
+            }),
+            contentType='application/json',
+            accept='application/json',
+            modelId='anthropic.claude-v2'
+        )
+
+        # Parse response
+        data = response['body'].read().decode('utf-8')
+        response_string = json.loads(data)
+
+        # Generate unique ID and timestamp
+        item_id = str(uuid.uuid4())
+        timestamp = datetime.now().isoformat()
+
+        # Extract the word from the prompt (assuming the word is "Malawi")
+        word = "Best_team_in_england"
+
+        # Save to DynamoDB with proper key structure
+        table.put_item(Item={
+            'word': word,  # Primary key
+            'id': item_id,
+            'timestamp': timestamp,
+            'question': prompt,
+            'answer': response_string.get('completion', ''),
+            'model': 'anthropic.claude-v2'
+        })
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'id': item_id,
+                'response': response_string
+            })
+        }
+
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': str(e)
+            })
+        }
